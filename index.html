@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CTG Monitor</title>
+<style>
+  body {
+    margin: 0;
+    background: #0b0f14;
+    color: #dbe7ff;
+    font-family: Arial, Helvetica, sans-serif;
+    overflow: hidden;
+  }
+
+  #header {
+    padding: 10px 14px;
+    font-size: 18px;
+    border-bottom: 1px solid rgba(219,231,255,0.2);
+  }
+
+  #header span {
+    font-size: 14px;
+    opacity: 0.8;
+  }
+
+  canvas {
+    display: block;
+  }
+</style>
+</head>
+
+<body>
+  <div id="header">
+    CTG Monitor <span>• Mixed Pattern Demo • Continuous Scroll</span>
+  </div>
+
+  <canvas id="ctg"></canvas>
+
+<script>
+const canvas = document.getElementById("ctg");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight - 48;
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---- Chart layout ----
+const padding = 20;
+const midGap = 20;
+
+let fhrTop = padding;
+let fhrHeight = (canvas.height - padding * 2 - midGap) / 2;
+let uaTop = fhrTop + fhrHeight + midGap;
+let uaHeight = fhrHeight;
+
+const paperSpeed = 1.5; // pixels per frame
+
+let xOffset = 0;
+
+// ---- Physiologic generators ----
+let t = 0;
+
+function fhrValue(time) {
+  // Baseline with variability
+  let base = 135 + Math.sin(time * 0.05) * 6;
+
+  // Accelerations
+  if (Math.sin(time * 0.01) > 0.85) {
+    base += 25;
+  }
+
+  // Occasional decelerations
+  if (Math.sin(time * 0.008 + 2) < -0.92) {
+    base -= 30;
+  }
+
+  return Math.max(90, Math.min(180, base));
+}
+
+function uaValue(time) {
+  let contraction = Math.max(0, Math.sin(time * 0.02));
+  return 10 + contraction * 60;
+}
+
+// ---- Drawing helpers ----
+function drawGrid(y, height, yMin, yMax, label) {
+  ctx.strokeStyle = "rgba(219,231,255,0.15)";
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i <= 5; i++) {
+    let yy = y + (height / 5) * i;
+    ctx.beginPath();
+    ctx.moveTo(0, yy);
+    ctx.lineTo(canvas.width, yy);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "#dbe7ff";
+  ctx.font = "14px Arial";
+  ctx.fillText(label, 10, y + 18);
+}
+
+let fhrPoints = [];
+let uaPoints = [];
+
+function update() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Background
+  ctx.fillStyle = "#0b0f14";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Grids
+  drawGrid(fhrTop, fhrHeight, 60, 200, "FHR (bpm)");
+  drawGrid(uaTop, uaHeight, 0, 100, "Uterine Activity");
+
+  // New data points
+  let fhr = fhrValue(t);
+  let ua = uaValue(t);
+
+  fhrPoints.push(fhr);
+  uaPoints.push(ua);
+
+  if (fhrPoints.length > canvas.width) {
+    fhrPoints.shift();
+    uaPoints.shift();
+  }
+
+  // Draw FHR waveform
+  ctx.strokeStyle = "#76c5ff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  fhrPoints.forEach((v, i) => {
+    let x = i;
+    let y = fhrTop + fhrHeight - ((v - 60) / 140) * fhrHeight;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Draw UA waveform
+  ctx.strokeStyle = "#ffb080";
+  ctx.beginPath();
+  uaPoints.forEach((v, i) => {
+    let x = i;
+    let y = uaTop + uaHeight - (v / 100) * uaHeight;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  t++;
+  requestAnimationFrame(update);
+}
+
+update();
+</script>
+</body>
+</html>
