@@ -1,164 +1,856 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>CTG Monitor</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CTG Display (Unified Dictionary Consumer)</title>
 <style>
-  body {
-    margin: 0;
-    background: #0b0f14;
-    color: #dbe7ff;
-    font-family: Arial, Helvetica, sans-serif;
-    overflow: hidden;
+  :root{
+    --bg:#0b0f14;
+    --panel:#0f1621;
+    --text:rgba(219,231,255,.92);
+    --muted:rgba(219,231,255,.68);
+    --gridMinor:rgba(219,231,255,.08);
+    --gridMajor:rgba(219,231,255,.14);
+    --axis:rgba(219,231,255,.28);
+    --fhrLine:#76c5ff;
+    --uaLine:#ffb080;
+    --warn:#ffdf80;
   }
-
-  #header {
-    padding: 10px 14px;
-    font-size: 18px;
-    border-bottom: 1px solid rgba(219,231,255,0.2);
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif;overflow:hidden;}
+  #wrap{display:flex;flex-direction:column;height:100%;}
+  #topbar{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:10px 12px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,0));
+    border-bottom:1px solid rgba(219,231,255,.14);
+    user-select:none;
   }
-
-  #header span {
-    font-size: 14px;
-    opacity: 0.8;
+  #brand{font-weight:700;letter-spacing:.3px}
+  .pill{padding:3px 8px;border:1px solid rgba(219,231,255,.18);border-radius:999px;font-size:12px;color:var(--muted)}
+  .pill strong{color:var(--text);font-weight:700}
+  #main{display:flex;flex:1;min-height:0;}
+  #left{
+    width:360px;max-width:38vw;min-width:320px;
+    border-right:1px solid rgba(219,231,255,.14);
+    background:rgba(15,22,33,.65);
+    display:flex;flex-direction:column;min-height:0;
   }
-
-  canvas {
-    display: block;
+  #leftHeader{padding:10px 12px;border-bottom:1px solid rgba(219,231,255,.14);display:flex;align-items:center;justify-content:space-between}
+  #leftHeader .hint{font-size:12px;color:var(--muted)}
+  #stats{padding:10px 12px;overflow:auto;flex:1}
+  .sectionTitle{font-size:12px;color:var(--muted);margin:10px 0 6px 0;text-transform:uppercase;letter-spacing:.6px}
+  .kv{display:flex;gap:8px;justify-content:space-between;margin:4px 0;font-size:13px}
+  .kv .k{color:var(--muted)}
+  .babyCard{
+    border:1px solid rgba(219,231,255,.14);
+    border-radius:12px;padding:10px 10px;margin:10px 0;background:rgba(11,15,20,.35);
+  }
+  .babyTop{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .babyId{font-weight:700}
+  .tag{font-size:11px;color:var(--muted);border:1px solid rgba(219,231,255,.14);border-radius:999px;padding:2px 6px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .metric{flex:1;min-width:135px;border:1px solid rgba(219,231,255,.12);border-radius:10px;padding:8px;background:rgba(15,22,33,.35)}
+  .metric .label{font-size:11px;color:var(--muted)}
+  .metric .value{font-size:18px;font-weight:700;margin-top:2px}
+  .metric .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  #debug{
+    border-top:1px solid rgba(219,231,255,.14);
+    padding:10px 12px;background:rgba(15,22,33,.55);
+  }
+  #debugTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+  #debugTop .small{font-size:12px;color:var(--muted)}
+  #debug textarea{
+    width:100%;height:92px;resize:none;
+    border-radius:10px;border:1px solid rgba(219,231,255,.14);
+    background:rgba(11,15,20,.6);color:var(--text);
+    padding:8px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;
+    outline:none;
+  }
+  #debugControls{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+  button{
+    border:1px solid rgba(219,231,255,.18);
+    background:rgba(255,255,255,.04);
+    color:var(--text);
+    padding:6px 10px;border-radius:10px;
+    cursor:pointer;font-size:12px;
+  }
+  button:hover{background:rgba(255,255,255,.07)}
+  #canvasWrap{flex:1;min-width:0;display:flex;flex-direction:column}
+  #ctg{flex:1;display:block;width:100%;height:100%;}
+  #footerNote{
+    position:absolute;right:10px;bottom:8px;
+    font-size:11px;color:rgba(219,231,255,.45);
+    user-select:none;pointer-events:none;
   }
 </style>
 </head>
-
 <body>
-  <div id="header">
-    CTG Monitor <span>• Mixed Pattern Demo • Continuous Scroll</span>
+<div id="wrap">
+  <div id="topbar">
+    <div id="brand">CTG Display</div>
+    <div class="pill">Patient: <strong id="pPatient">—</strong></div>
+    <div class="pill">GA: <strong id="pGA">—</strong></div>
+    <div class="pill">Mode: <strong id="pMode">—</strong></div>
+    <div class="pill">UA Mode: <strong id="pUAMode">TOCO</strong></div>
   </div>
 
-  <canvas id="ctg"></canvas>
+  <div id="main">
+    <div id="left">
+      <div id="leftHeader">
+        <div class="hint">Numerics reflect dictionary rules: baseline fixed, live tracks plotted value.</div>
+        <span class="tag" id="connTag">LISTENING</span>
+      </div>
+
+      <div id="stats">
+        <div class="sectionTitle">Uterine Activity</div>
+        <div class="row">
+          <div class="metric">
+            <div class="label">Baseline Tone</div>
+            <div class="value" id="uaToneDisp">—</div>
+            <div class="sub" id="uaToneUnits">TOCO (rel.)</div>
+          </div>
+          <div class="metric">
+            <div class="label">Live UA</div>
+            <div class="value" id="uaLiveDisp">—</div>
+            <div class="sub" id="uaLiveSub">—</div>
+          </div>
+        </div>
+
+        <div class="sectionTitle">Babies</div>
+        <div id="babyList"></div>
+
+        <div class="sectionTitle">Last Message</div>
+        <div class="kv"><div class="k">Prefix</div><div id="lastPrefix">—</div></div>
+        <div class="kv"><div class="k">Raw</div><div id="lastRaw" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</div></div>
+      </div>
+
+      <div id="debug">
+        <div id="debugTop">
+          <div class="small">Debug injector (paste one or more dictionary lines):</div>
+          <div class="small">Hash/URL listening enabled</div>
+        </div>
+        <textarea id="dbgText" spellcheck="false" placeholder="Example:
+CTX|PATIENT_01|31|6|LABOR
+FHR_BASE|A|140
+FHR_VAR|A|MODERATE|10
+CONTR_START|TOCO|MODERATE|78|2"></textarea>
+        <div id="debugControls">
+          <button id="btnInject">Inject</button>
+          <button id="btnDemo">Load Demo</button>
+          <button id="btnClear">Clear Events</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="canvasWrap">
+      <canvas id="ctg"></canvas>
+      <div id="footerNote">Consumes Unified Message Dictionary v1.0 • Buffer=180s • Sampling=10Hz</div>
+    </div>
+  </div>
+</div>
 
 <script>
-const canvas = document.getElementById("ctg");
-const ctx = canvas.getContext("2d");
+/* =========================================================
+   CTG DISPLAY — Unified Message Dictionary Consumer
+   GitHub Pages-ready (no external assets)
+   - Buffer window: 180 seconds
+   - Sampling: 10 Hz
+   - Two panes: FHR + UA
+   - FHR: grid + labeled y-axis
+   - UA: grid only for TOCO; labeled y-axis for IUPC
+   - Contractions: event-driven single-shot with mode-dependent lag
+   - Accels/Decels: event-driven
+   - GA-dependent accel criteria is assumed classified upstream; display just renders TYPE + params
+   ========================================================= */
 
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight - 48;
-}
-window.addEventListener("resize", resize);
-resize();
+/* ------------------ CONFIG ------------------ */
+const BUFFER_SEC = 180;
+const SPS = 10;                         // samples/sec for plot buffers
+const N = BUFFER_SEC * SPS;             // points in ring buffers
+const FHR_MIN = 60, FHR_MAX = 210;
 
-// ---- Chart layout ----
-const padding = 20;
-const midGap = 20;
+const COLORS = [
+  "#76c5ff","#b6ff76","#ff76c5","#ffd776",
+  "#a076ff","#76ffd7","#ff9a76","#76a7ff"
+];
 
-let fhrTop = padding;
-let fhrHeight = (canvas.height - padding * 2 - midGap) / 2;
-let uaTop = fhrTop + fhrHeight + midGap;
-let uaHeight = fhrHeight;
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function nowSec(){ return performance.now() / 1000; }
 
-const paperSpeed = 1.5; // pixels per frame
+/* ------------------ STATE ------------------ */
+const CTX = {
+  patientId: "—",
+  gaWeeks: null,
+  gaDays: null,
+  mode: "—"
+};
 
-let xOffset = 0;
+const UA = {
+  mode: "TOCO",                 // TOCO | IUPC
+  tone: 10,                     // baseline tone (relative for TOCO; mmHg baseline for IUPC)
+  live: 10,
+  activeContraction: null,      // {startAt, duration, strength, mode, lag, amp, toneAtStart}
+  lastContractionEndAt: 0
+};
 
-// ---- Physiologic generators ----
-let t = 0;
+const babies = new Map(); // BABY_ID -> babyState
 
-function fhrValue(time) {
-  // Baseline with variability
-  let base = 135 + Math.sin(time * 0.05) * 6;
-
-  // Accelerations
-  if (Math.sin(time * 0.01) > 0.85) {
-    base += 25;
-  }
-
-  // Occasional decelerations
-  if (Math.sin(time * 0.008 + 2) < -0.92) {
-    base -= 30;
-  }
-
-  return Math.max(90, Math.min(180, base));
-}
-
-function uaValue(time) {
-  let contraction = Math.max(0, Math.sin(time * 0.02));
-  return 10 + contraction * 60;
-}
-
-// ---- Drawing helpers ----
-function drawGrid(y, height, yMin, yMax, label) {
-  ctx.strokeStyle = "rgba(219,231,255,0.15)";
-  ctx.lineWidth = 1;
-
-  for (let i = 0; i <= 5; i++) {
-    let yy = y + (height / 5) * i;
-    ctx.beginPath();
-    ctx.moveTo(0, yy);
-    ctx.lineTo(canvas.width, yy);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = "#dbe7ff";
-  ctx.font = "14px Arial";
-  ctx.fillText(label, 10, y + 18);
+function makeBaby(id){
+  return {
+    id,
+    baseline: 140,
+    live: 140,
+    varClass: "MODERATE",
+    varAmp: 10,
+    // events (can overlap)
+    accel: null, // {startAt, duration, delta, type, trigger}
+    decel: null, // {startAt, duration, depth, type, relation}
+    // waveform engine internal
+    phase: Math.random()*Math.PI*2,
+    driftPhase: Math.random()*Math.PI*2,
+    // buffers
+    buf: new Float32Array(N),
+    idx: 0
+  };
 }
 
-let fhrPoints = [];
-let uaPoints = [];
+function ensureBaby(id){
+  if(!babies.has(id)) babies.set(id, makeBaby(id));
+  return babies.get(id);
+}
 
-function update() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+/* ------------------ BUFFERS ------------------ */
+const uaBuf = new Float32Array(N);
+let uaIdx = 0;
 
-  // Background
-  ctx.fillStyle = "#0b0f14";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+/* ------------------ UI ------------------ */
+const el = (id)=>document.getElementById(id);
+const babyList = el("babyList");
 
-  // Grids
-  drawGrid(fhrTop, fhrHeight, 60, 200, "FHR (bpm)");
-  drawGrid(uaTop, uaHeight, 0, 100, "Uterine Activity");
+function refreshHeader(){
+  el("pPatient").textContent = CTX.patientId ?? "—";
+  if(CTX.gaWeeks == null) el("pGA").textContent = "—";
+  else el("pGA").textContent = `${CTX.gaWeeks}+${CTX.gaDays ?? 0}`;
+  el("pMode").textContent = CTX.mode ?? "—";
+  el("pUAMode").textContent = UA.mode;
+}
 
-  // New data points
-  let fhr = fhrValue(t);
-  let ua = uaValue(t);
-
-  fhrPoints.push(fhr);
-  uaPoints.push(ua);
-
-  if (fhrPoints.length > canvas.width) {
-    fhrPoints.shift();
-    uaPoints.shift();
-  }
-
-  // Draw FHR waveform
-  ctx.strokeStyle = "#76c5ff";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  fhrPoints.forEach((v, i) => {
-    let x = i;
-    let y = fhrTop + fhrHeight - ((v - 60) / 140) * fhrHeight;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+function renderBabyCards(){
+  const ids = Array.from(babies.keys()).sort();
+  babyList.innerHTML = "";
+  ids.forEach((id, i)=>{
+    const b = babies.get(id);
+    const card = document.createElement("div");
+    card.className = "babyCard";
+    card.innerHTML = `
+      <div class="babyTop">
+        <div class="babyId">Baby ${escapeHtml(id)}</div>
+        <div class="tag">${escapeHtml(b.varClass)} (±${Math.round(b.varAmp)} bpm)</div>
+      </div>
+      <div class="row">
+        <div class="metric">
+          <div class="label">Baseline FHR</div>
+          <div class="value" id="base_${id}">${Math.round(b.baseline)}</div>
+          <div class="sub">Fixed until baseline changes</div>
+        </div>
+        <div class="metric">
+          <div class="label">Live FHR</div>
+          <div class="value" id="live_${id}">${Math.round(b.live)}</div>
+          <div class="sub" id="evt_${id}">${formatEventLine(b)}</div>
+        </div>
+      </div>
+      <div class="kv"><div class="k">Color</div><div style="display:flex;align-items:center;gap:8px;">
+        <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${COLORS[i%COLORS.length]};border:1px solid rgba(255,255,255,.15)"></span>
+        <span class="k">${COLORS[i%COLORS.length]}</span>
+      </div></div>
+    `;
+    babyList.appendChild(card);
   });
-  ctx.stroke();
-
-  // Draw UA waveform
-  ctx.strokeStyle = "#ffb080";
-  ctx.beginPath();
-  uaPoints.forEach((v, i) => {
-    let x = i;
-    let y = uaTop + uaHeight - (v / 100) * uaHeight;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-
-  t++;
-  requestAnimationFrame(update);
 }
 
-update();
+function updateNumerics(){
+  // UA
+  el("uaToneDisp").textContent = (UA.mode === "IUPC") ? `${Math.round(UA.tone)} mmHg` : `${Math.round(UA.tone)}`;
+  el("uaToneUnits").textContent = (UA.mode === "IUPC") ? "IUPC (mmHg)" : "TOCO (rel.)";
+  el("uaLiveDisp").textContent = (UA.mode === "IUPC") ? `${Math.round(UA.live)} mmHg` : `${Math.round(UA.live)}`;
+  el("uaLiveSub").textContent = UA.activeContraction ? `Contraction: ${UA.activeContraction.strength} • ${UA.activeContraction.duration}s` : "Baseline";
+
+  // Babies
+  for(const [id, b] of babies.entries()){
+    const base = document.getElementById(`base_${id}`);
+    const live = document.getElementById(`live_${id}`);
+    const evt = document.getElementById(`evt_${id}`);
+    if(base) base.textContent = Math.round(b.baseline);
+    if(live) live.textContent = Math.round(b.live);
+    if(evt) evt.textContent = formatEventLine(b);
+  }
+}
+
+function formatEventLine(b){
+  const parts = [];
+  if(b.accel){
+    parts.push(`Accel ${b.accel.type} +${b.accel.delta} for ${b.accel.duration}s`);
+  }
+  if(b.decel){
+    parts.push(`Decel ${b.decel.type} -${b.decel.depth} for ${b.decel.duration}s`);
+  }
+  return parts.length ? parts.join(" • ") : "No active events";
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+
+/* ------------------ CANVAS ------------------ */
+const canvas = el("ctg");
+const ctx2d = canvas.getContext("2d");
+
+function resizeCanvas(){
+  const r = canvas.getBoundingClientRect();
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  canvas.width = Math.floor(r.width * dpr);
+  canvas.height = Math.floor(r.height * dpr);
+  ctx2d.setTransform(dpr,0,0,dpr,0,0); // draw in CSS pixels
+}
+new ResizeObserver(resizeCanvas).observe(canvas);
+
+/* ------------------ PLOTTING HELPERS ------------------ */
+function drawGridAndAxes(layout){
+  const {x0,y0,w,h, title, yMin, yMax, showYLabels, yLabelFormatter, majorYStep, minorYStep, majorXSec, minorXSec} = layout;
+
+  // Background panel
+  ctx2d.fillStyle = "rgba(11,15,20,0.25)";
+  ctx2d.fillRect(x0,y0,w,h);
+
+  // Vertical grid (time)
+  const pxPerSec = w / BUFFER_SEC;
+
+  // Minor
+  ctx2d.strokeStyle = getCss("--gridMinor");
+  ctx2d.lineWidth = 1;
+  for(let s=0;s<=BUFFER_SEC;s+=minorXSec){
+    const x = x0 + w - s * pxPerSec;
+    ctx2d.beginPath(); ctx2d.moveTo(x,y0); ctx2d.lineTo(x,y0+h); ctx2d.stroke();
+  }
+  // Major
+  ctx2d.strokeStyle = getCss("--gridMajor");
+  for(let s=0;s<=BUFFER_SEC;s+=majorXSec){
+    const x = x0 + w - s * pxPerSec;
+    ctx2d.beginPath(); ctx2d.moveTo(x,y0); ctx2d.lineTo(x,y0+h); ctx2d.stroke();
+  }
+
+  // Horizontal grid (value)
+  // Minor
+  ctx2d.strokeStyle = getCss("--gridMinor");
+  for(let v=yMin; v<=yMax; v+=minorYStep){
+    const y = y0 + h - ( (v - yMin) / (yMax - yMin) ) * h;
+    ctx2d.beginPath(); ctx2d.moveTo(x0,y); ctx2d.lineTo(x0+w,y); ctx2d.stroke();
+  }
+  // Major
+  ctx2d.strokeStyle = getCss("--gridMajor");
+  for(let v=yMin; v<=yMax; v+=majorYStep){
+    const y = y0 + h - ( (v - yMin) / (yMax - yMin) ) * h;
+    ctx2d.beginPath(); ctx2d.moveTo(x0,y); ctx2d.lineTo(x0+w,y); ctx2d.stroke();
+  }
+
+  // Axes
+  ctx2d.strokeStyle = getCss("--axis");
+  ctx2d.lineWidth = 1;
+  ctx2d.strokeRect(x0,y0,w,h);
+
+  // Title
+  ctx2d.fillStyle = getCss("--muted");
+  ctx2d.font = "12px Arial";
+  ctx2d.fillText(title, x0+8, y0+16);
+
+  // Y labels
+  if(showYLabels){
+    ctx2d.fillStyle = getCss("--muted");
+    ctx2d.font = "11px Arial";
+    for(let v=yMin; v<=yMax; v+=majorYStep){
+      const y = y0 + h - ((v - yMin)/(yMax - yMin))*h;
+      const txt = yLabelFormatter ? yLabelFormatter(v) : String(v);
+      ctx2d.fillText(txt, x0+6, y+4);
+    }
+  }
+}
+
+function plotLine(layout, series, seriesIdx, color, yMin, yMax){
+  const {x0,y0,w,h} = layout;
+  ctx2d.strokeStyle = color;
+  ctx2d.lineWidth = 2;
+  ctx2d.beginPath();
+
+  // series is Float32Array ring buffer; seriesIdx current write idx
+  // Render oldest->newest mapped to left->right
+  for(let i=0;i<N;i++){
+    const idx = (seriesIdx + 1 + i) % N; // oldest
+    const v = series[idx];
+    const x = x0 + (i/(N-1))*w;
+    const y = y0 + h - ((v - yMin)/(yMax - yMin))*h;
+    if(i===0) ctx2d.moveTo(x,y);
+    else ctx2d.lineTo(x,y);
+  }
+  ctx2d.stroke();
+}
+
+function getCss(varName){
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+}
+
+/* ------------------ WAVEFORM ENGINES ------------------ */
+function variabilityValue(b, dt){
+  // dt in seconds per sample step (1/SPS)
+  const cls = b.varClass;
+  const amp = Math.max(0, Number(b.varAmp) || 0);
+
+  // Small random walk drift for realism without chasing baseline
+  b.driftPhase += dt * 0.12;
+
+  // Helper: constrained jitter
+  const jitter = ()=> (Math.random() - 0.5) * 2;
+
+  if(cls === "ABSENT"){
+    return 0;
+  }
+
+  if(cls === "MINIMAL"){
+    // tight noise, no hills
+    return (Math.random()-0.5) * Math.min(amp,5);
+  }
+
+  if(cls === "MODERATE"){
+    // organic hills + light jitter
+    b.phase += dt * (2*Math.PI/8.0); // ~8s undulation (teaching-friendly)
+    const hills = Math.sin(b.phase) * Math.min(amp,25) * 0.75;
+    const j = jitter() * 1.2;
+    return hills + j;
+  }
+
+  if(cls === "MARKED_STANDARD"){
+    b.phase += dt * (2*Math.PI/6.0);
+    const hills = Math.sin(b.phase) * Math.min(amp,40) * 0.55;
+    const chaos = (Math.random()-0.5) * Math.min(amp,40) * 0.85;
+    return hills + chaos;
+  }
+
+  if(cls === "MARKED_SEVERE"){
+    b.phase += dt * (2*Math.PI/4.5);
+    const hills = Math.sin(b.phase) * Math.min(amp,55) * 0.60;
+    const chaos = (Math.random()-0.5) * Math.min(amp,55) * 1.05;
+    const whip = (Math.random()<0.015) ? ((Math.random()<0.5?-1:1) * (10 + Math.random()*18)) : 0;
+    return hills + chaos + whip;
+  }
+
+  if(cls === "SINUSOIDAL_CLASSIC"){
+    // Pure sine (no jitter)
+    // Period can be tuned by varAmp (optional) but default teaching-friendly
+    const periodSec = 12; // visually readable on screen
+    b.phase += dt * (2*Math.PI/periodSec);
+    return Math.sin(b.phase) * clamp(amp || 20, 8, 30);
+  }
+
+  if(cls === "SINUSOIDAL_OSCILLATORY"){
+    // Smooth rolling wave with slight organic variation
+    const basePeriod = 14;
+    b.phase += dt * (2*Math.PI/basePeriod);
+    const wobble = Math.sin(b.driftPhase) * 0.12;
+    const a = clamp(amp || 16, 8, 28);
+    return Math.sin(b.phase + wobble) * a;
+  }
+
+  // fallback
+  return (Math.random()-0.5) * Math.min(amp,10);
+}
+
+function accelOffset(b, t){
+  if(!b.accel) return 0;
+  const e = b.accel;
+  const elapsed = t - e.startAt;
+  if(elapsed < 0) return 0;
+  if(elapsed >= e.duration) { b.accel = null; return 0; }
+
+  // Smooth single-hump envelope (rise/plateau/fall-ish)
+  const x = elapsed / e.duration;
+  // bell-like with slightly flatter top
+  const env = 1 - Math.pow((x - 0.5) / 0.5, 2);
+  const shaped = clamp(env, 0, 1) * (0.85 + 0.15*Math.sin(x*Math.PI));
+  return shaped * e.delta;
+}
+
+function decelOffset(b, t){
+  if(!b.decel) return 0;
+  const e = b.decel;
+  const elapsed = t - e.startAt;
+  if(elapsed < 0) return 0;
+  if(elapsed >= e.duration) { b.decel = null; return 0; }
+
+  const x = elapsed / e.duration;
+  const env = 1 - Math.pow((x - 0.5) / 0.5, 2);
+  const shaped = clamp(env, 0, 1) * (0.88 + 0.12*Math.sin(x*Math.PI));
+  return -shaped * e.depth;
+}
+
+/* ------------------ CONTRACTION ENGINE (event-driven, approved shape/speed) ------------------ */
+function strengthToAmp(mode, strength){
+  // TOCO relative scale; IUPC mmHg scale
+  const s = String(strength||"MODERATE").toUpperCase();
+  if(mode === "IUPC"){
+    if(s==="MILD") return 25;
+    if(s==="STRONG") return 65;
+    return 45; // MODERATE
+  } else {
+    if(s==="MILD") return 18;
+    if(s==="STRONG") return 42;
+    return 30;
+  }
+}
+
+function uaTargetAtTime(t){
+  const tone = UA.tone;
+
+  const c = UA.activeContraction;
+  if(!c) return tone;
+
+  const start = c.startAt;
+  const end = c.startAt + c.duration;
+
+  if(t < start) return tone;
+  if(t >= end){
+    UA.activeContraction = null;
+    return tone;
+  }
+
+  // Approved smooth half-sine hill:
+  // phase 0..pi over duration => max at midpoint
+  const x = (t - start) / c.duration; // 0..1
+  const hill = Math.max(0, Math.sin(x * Math.PI)); // 0..1..0
+  return tone + hill * c.amp;
+}
+
+/* ------------------ MESSAGE INGESTION ------------------ */
+function ingest(raw){
+  if(!raw) return;
+  const lines = String(raw).split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  for(const line of lines){
+    const parts = line.split("|");
+    const prefix = parts[0] || "";
+    el("lastPrefix").textContent = prefix || "—";
+    el("lastRaw").textContent = line;
+
+    if(prefix === "CTX"){
+      // CTX|PATIENT_ID|GA_WEEKS|GA_DAYS|MODE
+      CTX.patientId = parts[1] ?? "—";
+      CTX.gaWeeks = (parts[2] != null && parts[2] !== "") ? Number(parts[2]) : null;
+      CTX.gaDays  = (parts[3] != null && parts[3] !== "") ? Number(parts[3]) : null;
+      CTX.mode    = parts[4] ?? "—";
+      refreshHeader();
+      continue;
+    }
+
+    if(prefix === "FHR_BASE"){
+      // FHR_BASE|BABY_ID|BASELINE_BPM
+      const b = ensureBaby(parts[1] ?? "A");
+      b.baseline = Number(parts[2] ?? b.baseline);
+      renderBabyCards();
+      continue;
+    }
+
+    if(prefix === "FHR_VAR"){
+      // FHR_VAR|BABY_ID|CLASS|AMPLITUDE_BPM
+      const b = ensureBaby(parts[1] ?? "A");
+      b.varClass = (parts[2] ?? b.varClass).toUpperCase();
+      b.varAmp = Number(parts[3] ?? b.varAmp);
+      renderBabyCards();
+      continue;
+    }
+
+    if(prefix === "FHR_LIVE"){
+      // Optional override: FHR_LIVE|BABY_ID|LIVE_BPM
+      // (We generally compute live from waveform; if provided, we store it but still plot our generated trace.)
+      const b = ensureBaby(parts[1] ?? "A");
+      b.live = Number(parts[2] ?? b.live);
+      continue;
+    }
+
+    if(prefix === "ACCEL_START"){
+      // ACCEL_START|BABY_ID|TYPE|DELTA_BPM|DURATION_SEC|TRIGGER
+      const b = ensureBaby(parts[1] ?? "A");
+      b.accel = {
+        type: (parts[2] ?? "STANDARD").toUpperCase(),
+        delta: Number(parts[3] ?? 15),
+        duration: Number(parts[4] ?? 20),
+        trigger: (parts[5] ?? "MANUAL").toUpperCase(),
+        startAt: nowSec()
+      };
+      continue;
+    }
+
+    if(prefix === "ACCEL_END"){
+      const b = ensureBaby(parts[1] ?? "A");
+      b.accel = null;
+      continue;
+    }
+
+    if(prefix === "DECEL_START"){
+      // DECEL_START|BABY_ID|TYPE|DEPTH_BPM|DURATION_SEC|RELATION
+      const b = ensureBaby(parts[1] ?? "A");
+      b.decel = {
+        type: (parts[2] ?? "VARIABLE").toUpperCase(),
+        depth: Number(parts[3] ?? 20),
+        duration: Number(parts[4] ?? 40),
+        relation: (parts[5] ?? "INDEPENDENT").toUpperCase(),
+        startAt: nowSec()
+      };
+      continue;
+    }
+
+    if(prefix === "DECEL_END"){
+      const b = ensureBaby(parts[1] ?? "A");
+      b.decel = null;
+      continue;
+    }
+
+    if(prefix === "CONTR_START"){
+      // CONTR_START|MODE|STRENGTH|DURATION_SEC|LAG_SEC
+      const mode = (parts[1] ?? "TOCO").toUpperCase();
+      const strength = (parts[2] ?? "MODERATE").toUpperCase();
+      const duration = Number(parts[3] ?? 78);
+      const lag = Number(parts[4] ?? (mode==="IUPC"?0.5:2));
+
+      UA.mode = mode;
+      refreshHeader();
+
+      const startAt = nowSec() + Math.max(0, lag);
+      UA.activeContraction = {
+        mode, strength, duration,
+        lag, startAt,
+        amp: strengthToAmp(mode, strength),
+        toneAtStart: UA.tone
+      };
+      continue;
+    }
+
+    if(prefix === "CONTR_END"){
+      UA.activeContraction = null;
+      continue;
+    }
+
+    // Optional future: allow explicit UA tone set
+    if(prefix === "UA_TONE"){
+      // UA_TONE|VALUE
+      UA.tone = Number(parts[1] ?? UA.tone);
+      continue;
+    }
+
+    // Optional future: allow explicit UA mode set
+    if(prefix === "UA_MODE"){
+      // UA_MODE|TOCO|or|IUPC
+      UA.mode = (parts[1] ?? UA.mode).toUpperCase();
+      refreshHeader();
+      continue;
+    }
+  }
+
+  // Keep UI stable
+  renderBabyCards();
+}
+
+/* ------------------ URL/Hash Consumer (SL-friendly) ------------------
+   Second Life prim media can be updated via LSL by setting the media URL.
+   Two SL-friendly ways to "push" messages without postMessage:
+   1) Set URL hash to encoded payload:
+      https://user.github.io/ctg-display/#CTX|PATIENT|32|0|LABOR
+   2) Set query parameter m= (encoded):
+      .../ctg-display/?m=CTX%7CPATIENT%7C32%7C0%7CLABOR
+   This page listens for both, and ingests the payload.
+--------------------------------------------------------------------- */
+let lastQueryM = null;
+function consumeHash(){
+  const h = window.location.hash;
+  if(!h || h.length < 2) return;
+  const payload = decodeURIComponent(h.slice(1));
+  ingest(payload);
+  // Clear hash to allow same message again if needed
+  history.replaceState(null, document.title, window.location.pathname + window.location.search);
+}
+window.addEventListener("hashchange", consumeHash);
+
+function consumeQueryM(){
+  const url = new URL(window.location.href);
+  const m = url.searchParams.get("m");
+  if(m && m !== lastQueryM){
+    lastQueryM = m;
+    ingest(decodeURIComponent(m));
+    // strip param after consuming (optional; keeps URL clean if viewer shows it)
+    url.searchParams.delete("m");
+    history.replaceState(null, document.title, url.pathname + (url.search ? url.search : "") + (url.hash ? url.hash : ""));
+  }
+}
+
+/* Optional: postMessage bridge (future-proof) */
+window.addEventListener("message", (ev)=>{
+  if(typeof ev.data === "string" && ev.data.includes("|")){
+    ingest(ev.data);
+  }
+});
+
+/* ------------------ MAIN LOOP (sampling + render) ------------------ */
+let lastSampleT = nowSec();
+let sampleAcc = 0;
+
+function step(){
+  const t = nowSec();
+  consumeQueryM();
+
+  // sample at SPS
+  const dt = t - lastSampleT;
+  lastSampleT = t;
+  sampleAcc += dt;
+
+  const samplePeriod = 1 / SPS;
+
+  while(sampleAcc >= samplePeriod){
+    sampleAcc -= samplePeriod;
+
+    // ensure at least one baby exists so screen isn't empty
+    if(babies.size === 0){
+      ensureBaby("A");
+      renderBabyCards();
+    }
+
+    // UA
+    const ua = uaTargetAtTime(t);
+    UA.live = ua;
+    uaBuf[uaIdx] = ua;
+    uaIdx = (uaIdx + 1) % N;
+
+    // FHR per baby
+    for(const [id, b] of babies.entries()){
+      const varOff = variabilityValue(b, samplePeriod);
+      const accOff = accelOffset(b, t);
+      const decOff = decelOffset(b, t);
+
+      let live = b.baseline + varOff + accOff + decOff;
+      live = clamp(live, 30, 240);
+      b.live = live;
+
+      b.buf[b.idx] = live;
+      b.idx = (b.idx + 1) % N;
+    }
+  }
+
+  draw();
+  updateNumerics();
+  requestAnimationFrame(step);
+}
+
+function draw(){
+  // layout
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+
+  // panes
+  const pad = 16;
+  const gap = 18;
+  const paneH = (h - pad*2 - gap) / 2;
+
+  const leftAxisPad = 46; // room for y labels
+  const x0 = leftAxisPad;
+  const paneW = w - leftAxisPad - pad;
+
+  const fhrLayout = {
+    x0, y0: pad, w: paneW, h: paneH,
+    title: "FHR (bpm)",
+    yMin: FHR_MIN, yMax: FHR_MAX,
+    showYLabels: true,
+    yLabelFormatter: (v)=>String(v),
+    majorYStep: 30,
+    minorYStep: 10,
+    majorXSec: 60,
+    minorXSec: 10
+  };
+
+  // UA scaling depends on mode
+  const uaIsIUPC = (UA.mode === "IUPC");
+  const uaYMin = uaIsIUPC ? 0 : 0;
+  const uaYMax = uaIsIUPC ? 100 : 100; // keep 0–100 for consistent TOCO feel; IUPC labels reflect mmHg scale
+  const uaLayout = {
+    x0, y0: pad + paneH + gap, w: paneW, h: paneH,
+    title: uaIsIUPC ? "Uterine Activity (IUPC mmHg)" : "Uterine Activity (TOCO)",
+    yMin: uaYMin, yMax: uaYMax,
+    showYLabels: uaIsIUPC,
+    yLabelFormatter: (v)=>uaIsIUPC ? String(v) : "",
+    majorYStep: 25,
+    minorYStep: 10,
+    majorXSec: 60,
+    minorXSec: 10
+  };
+
+  // clear
+  ctx2d.clearRect(0,0,w,h);
+
+  // draw grid+axes
+  drawGridAndAxes(fhrLayout);
+  drawGridAndAxes(uaLayout);
+
+  // plot babies
+  const ids = Array.from(babies.keys()).sort();
+  ids.forEach((id, i)=>{
+    const b = babies.get(id);
+    plotLine(fhrLayout, b.buf, (b.idx - 1 + N) % N, COLORS[i%COLORS.length], FHR_MIN, FHR_MAX);
+  });
+
+  // plot UA (normalize into 0..100 display space)
+  // For TOCO: UA is already relative ~0..60-ish => plot directly.
+  // For IUPC: UA is mmHg value; plot directly on 0..100.
+  plotLine(uaLayout, uaBuf, (uaIdx - 1 + N) % N, getCss("--uaLine"), uaYMin, uaYMax);
+
+  // left-side labels (axis header)
+  ctx2d.fillStyle = getCss("--muted");
+  ctx2d.font = "11px Arial";
+  ctx2d.fillText("Y", 8, pad + 12);
+  ctx2d.fillText("Y", 8, pad + paneH + gap + 12);
+
+  // time footer markers
+  ctx2d.fillStyle = "rgba(219,231,255,.5)";
+  ctx2d.font = "11px Arial";
+  ctx2d.fillText(`Time window: last ${BUFFER_SEC}s`, x0 + 8, uaLayout.y0 + uaLayout.h - 8);
+}
+
+/* ------------------ DEBUG BUTTONS ------------------ */
+el("btnInject").addEventListener("click", ()=>{
+  ingest(el("dbgText").value);
+});
+
+el("btnClear").addEventListener("click", ()=>{
+  for(const b of babies.values()){
+    b.accel = null;
+    b.decel = null;
+  }
+  UA.activeContraction = null;
+});
+
+el("btnDemo").addEventListener("click", ()=>{
+  const demo = [
+    "CTX|PATIENT_DEMO|31|6|LABOR",
+    "FHR_BASE|A|140",
+    "FHR_VAR|A|MODERATE|10",
+    "FHR_BASE|B|152",
+    "FHR_VAR|B|MINIMAL|3",
+    "CONTR_START|TOCO|MODERATE|78|2",
+    "ACCEL_START|A|STANDARD|15|20|MANUAL",
+    "DECEL_START|B|VARIABLE|25|40|WITH_CONTRACTION"
+  ].join("\n");
+  el("dbgText").value = demo;
+  ingest(demo);
+});
+
+/* ------------------ INIT ------------------ */
+refreshHeader();
+renderBabyCards();
+consumeHash();
+requestAnimationFrame(step);
 </script>
 </body>
 </html>
-
